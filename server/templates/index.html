@@ -1,279 +1,400 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Live Location V1</title>
+    <meta charset="UTF-8">
 
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
 
-<style>
-* {
-    box-sizing: border-box;
-}
+    <title>Live Location V1</title>
 
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #111827;
-    color: white;
-}
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
 
-.header {
-    padding: 14px 18px;
-    background: #1f2937;
-}
+    <style>
 
-.title {
-    font-size: 20px;
-    font-weight: bold;
-}
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
 
-.info {
-    margin-top: 6px;
-    font-size: 13px;
-    color: #cbd5e1;
-}
+        #map {
+            width: 100%;
+            height: 100%;
+        }
 
-.live {
-    color: #22c55e;
-    font-weight: bold;
-}
+        .topbar {
 
-.waiting {
-    color: #f59e0b;
-    font-weight: bold;
-}
+            position: fixed;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
 
-#map {
-    height: calc(100vh - 78px);
-    width: 100%;
-}
-</style>
+            z-index: 1000;
+
+            background: rgba(255,255,255,0.96);
+
+            padding: 12px 18px;
+
+            border-radius: 12px;
+
+            box-shadow:
+                0 3px 15px rgba(0,0,0,0.25);
+
+            text-align: center;
+
+            min-width: 260px;
+        }
+
+        .title {
+
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .status {
+
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        .live {
+
+            color: #168a35;
+            font-weight: bold;
+        }
+
+        .offline {
+
+            color: #b00020;
+            font-weight: bold;
+        }
+
+        .location-info {
+
+            margin-top: 5px;
+            font-size: 12px;
+        }
+
+        .map-switch {
+
+            position: fixed;
+
+            top: 130px;
+            right: 15px;
+
+            z-index: 1000;
+
+            background: white;
+
+            border-radius: 10px;
+
+            box-shadow:
+                0 3px 12px rgba(0,0,0,0.25);
+
+            overflow: hidden;
+        }
+
+        .map-switch button {
+
+            display: block;
+
+            width: 130px;
+
+            padding: 10px;
+
+            border: none;
+
+            background: white;
+
+            cursor: pointer;
+
+            font-weight: bold;
+        }
+
+        .map-switch button:hover {
+
+            background: #eeeeee;
+        }
+
+        .map-switch button.active {
+
+            background: #222;
+            color: white;
+        }
+
+    </style>
+
 </head>
 
 <body>
 
-<div class="header">
+<div class="topbar">
 
     <div class="title">
         📍 Live Location V1
     </div>
 
-    <div id="info" class="info waiting">
+    <div id="status" class="status">
+        Connecting...
+    </div>
+
+    <div id="locationInfo" class="location-info">
         Waiting for location...
     </div>
 
 </div>
 
+<div class="map-switch">
+
+    <button
+        id="streetButton"
+        class="active"
+        onclick="showStreet()">
+
+        🗺️ Street
+
+    </button>
+
+    <button
+        id="satelliteButton"
+        onclick="showSatellite()">
+
+        🛰️ Satellite
+
+    </button>
+
+</div>
+
 <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+</script>
 
 <script>
 
-const map = L.map("map").setView(
-    [20.5937, 78.9629],
-    5
-);
-
-L.tileLayer(
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors"
-    }
-).addTo(map);
-
-let marker = null;
-let firstLocation = true;
-
-let lastLatitude = null;
-let lastLongitude = null;
-let lastRecordedAt = null;
+    const map = L.map("map", {
+        zoomControl: true
+    }).setView(
+        [17.9780722, 79.512325],
+        15
+    );
 
 
-/*
-    Get latest location from server
-*/
-async function updateLocation() {
-
-    try {
-
-        const response = await fetch(
-            "/api/latest?t=" + Date.now(),
+    // Street map
+    const streetLayer =
+        L.tileLayer(
+            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
             {
-                cache: "no-store"
+                maxZoom: 19,
+
+                attribution:
+                    '&copy; OpenStreetMap contributors'
             }
         );
 
-        if (!response.ok) {
-            throw new Error(
-                "HTTP " + response.status
-            );
-        }
 
-        const data = await response.json();
+    // Satellite imagery
+    const satelliteLayer =
+        L.tileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            {
+                maxZoom: 19,
 
-        console.log("Latest location:", data);
-
-
-        /*
-            No location yet
-        */
-        if (
-            data.location === null ||
-            data.latitude === null ||
-            data.latitude === undefined ||
-            data.longitude === null ||
-            data.longitude === undefined
-        ) {
-
-            document.getElementById("info").innerHTML =
-                "Waiting for shared location...";
-
-            return;
-        }
-
-
-        const latitude = Number(data.latitude);
-        const longitude = Number(data.longitude);
-
-
-        if (
-            !Number.isFinite(latitude) ||
-            !Number.isFinite(longitude)
-        ) {
-
-            console.log("Invalid coordinates");
-
-            return;
-        }
-
-
-        const position = [
-            latitude,
-            longitude
-        ];
-
-
-        /*
-            Create marker first time
-        */
-        if (marker === null) {
-
-            marker = L.marker(position)
-                .addTo(map);
-
-            marker.bindPopup(
-                "📍 Live Location<br>" +
-                "Device: " +
-                data.device_id
-            );
-
-        }
-
-        /*
-            Move marker to newest location
-        */
-        else {
-
-            marker.setLatLng(position);
-
-        }
-
-
-        /*
-            Center map ONLY the first time.
-            This prevents the map from jumping every 2 seconds.
-        */
-        if (firstLocation) {
-
-            map.setView(
-                position,
-                17
-            );
-
-            firstLocation = false;
-        }
-
-
-        /*
-            Update marker popup
-        */
-        marker.setPopupContent(
-            "📍 Live Location<br>" +
-            "Device: " +
-            data.device_id +
-            "<br>Accuracy: " +
-            (data.accuracy ?? "N/A") +
-            " m" +
-            "<br>Updated: " +
-            data.recorded_at
+                attribution:
+                    "Tiles &copy; Esri"
+            }
         );
 
 
-        /*
-            Show live information
-        */
-        document.getElementById("info").className =
-            "info live";
-
-        document.getElementById("info").innerHTML =
-            "🟢 LIVE &nbsp; | &nbsp; " +
-            "Device: " +
-            data.device_id +
-            " &nbsp; | &nbsp; " +
-            "Accuracy: " +
-            (data.accuracy ?? "N/A") +
-            " m" +
-            " &nbsp; | &nbsp; " +
-            "Updated: " +
-            data.recorded_at;
+    streetLayer.addTo(map);
 
 
-        /*
-            Remember last location
-        */
-        lastLatitude = latitude;
-        lastLongitude = longitude;
-        lastRecordedAt = data.recorded_at;
+    let marker = null;
 
+    let firstLocation = true;
+
+    let lastRecordedAt = null;
+
+
+    function showStreet() {
+
+        if (map.hasLayer(satelliteLayer)) {
+            map.removeLayer(satelliteLayer);
+        }
+
+        if (!map.hasLayer(streetLayer)) {
+            streetLayer.addTo(map);
+        }
+
+        document
+            .getElementById("streetButton")
+            .classList.add("active");
+
+        document
+            .getElementById("satelliteButton")
+            .classList.remove("active");
     }
 
-    catch (error) {
 
-        console.error(
-            "Location update error:",
-            error
-        );
+    function showSatellite() {
 
-        document.getElementById("info").className =
-            "info waiting";
+        if (map.hasLayer(streetLayer)) {
+            map.removeLayer(streetLayer);
+        }
 
-        document.getElementById("info").innerHTML =
-            "⚠️ Waiting for server...";
+        if (!map.hasLayer(satelliteLayer)) {
+            satelliteLayer.addTo(map);
+        }
+
+        document
+            .getElementById("satelliteButton")
+            .classList.add("active");
+
+        document
+            .getElementById("streetButton")
+            .classList.remove("active");
     }
-}
 
 
-/*
-    Initial update
-*/
-updateLocation();
+    async function updateLocation() {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/latest?t=" +
+                    Date.now(),
+                    {
+                        cache: "no-store"
+                    }
+                );
 
 
-/*
-    Refresh automatically every 2 seconds
-*/
-setInterval(
-    updateLocation,
-    2000
-);
+            if (!response.ok) {
+                throw new Error(
+                    "HTTP " + response.status
+                );
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (!data.location) {
+
+                document
+                    .getElementById("status")
+                    .innerHTML =
+                    '<span class="offline">' +
+                    'WAITING FOR LOCATION' +
+                    '</span>';
+
+                return;
+            }
+
+
+            const latitude =
+                Number(data.location.latitude);
+
+            const longitude =
+                Number(data.location.longitude);
+
+            const accuracy =
+                Number(data.location.accuracy || 0);
+
+            const recordedAt =
+                data.location.recorded_at;
+
+
+            const position =
+                [latitude, longitude];
+
+
+            if (!marker) {
+
+                marker =
+                    L.marker(position)
+                        .addTo(map)
+                        .bindPopup(
+                            "📍 Live device"
+                        );
+
+            } else {
+
+                marker.setLatLng(position);
+            }
+
+
+            if (firstLocation) {
+
+                map.setView(
+                    position,
+                    18
+                );
+
+                firstLocation = false;
+            }
+
+
+            const changed =
+                lastRecordedAt !== recordedAt;
+
+            lastRecordedAt =
+                recordedAt;
+
+
+            document
+                .getElementById("status")
+                .innerHTML =
+                '<span class="live">● LIVE</span>';
+
+
+            document
+                .getElementById("locationInfo")
+                .innerHTML =
+                "Lat: " +
+                latitude.toFixed(6) +
+                " | Lon: " +
+                longitude.toFixed(6) +
+                "<br>" +
+                "Accuracy: " +
+                accuracy.toFixed(1) +
+                " m<br>" +
+                "Updated: " +
+                new Date(recordedAt)
+                    .toLocaleString();
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            document
+                .getElementById("status")
+                .innerHTML =
+                '<span class="offline">' +
+                'CONNECTION ERROR' +
+                '</span>';
+        }
+    }
+
+
+    updateLocation();
+
+    setInterval(
+        updateLocation,
+        2000
+    );
 
 </script>
 
