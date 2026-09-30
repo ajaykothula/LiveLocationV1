@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Live Location V1</title>
+
+<link
+rel="stylesheet"
+href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #111827;
+    color: white;
+}
+
+.header {
+    padding: 15px 18px;
+    background: #1f2937;
+}
+
+.title {
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.info {
+    margin-top: 6px;
+    color: #cbd5e1;
+    font-size: 13px;
+}
+
+#map {
+    height: calc(100vh - 80px);
+    width: 100%;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="header">
+
+    <div class="title">
+        📍 Live Location V1
+    </div>
+
+    <div id="info" class="info">
+        Waiting for a shared location...
+    </div>
+
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+const map = L.map("map").setView(
+    [20.5937, 78.9629],
+    5
+);
+
+L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+        maxZoom: 19,
+        attribution:
+            "&copy; OpenStreetMap contributors"
+    }
+).addTo(map);
+
+let marker = null;
+
+async function updateLocation() {
+
+    try {
+
+        const response =
+            await fetch("/api/latest");
+
+        const data =
+            await response.json();
+
+        if (!data.latitude) {
+            return;
+        }
+
+        const position = [
+            data.latitude,
+            data.longitude
+        ];
+
+        if (marker === null) {
+
+            marker =
+                L.marker(position)
+                .addTo(map);
+
+        } else {
+
+            marker.setLatLng(position);
+
+        }
+
+        marker.bindPopup(
+            "Device: " +
+            data.device_id +
+            "<br>Accuracy: " +
+            (data.accuracy ?? "N/A") +
+            " meters"
+        );
+
+        map.setView(position, 16);
+
+        document.getElementById("info").textContent =
+            "Device: " +
+            data.device_id +
+            " | Accuracy: " +
+            (data.accuracy ?? "N/A") +
+            " m | Updated: " +
+            data.recorded_at;
+
+    } catch (error) {
+
+        document.getElementById("info").textContent =
+            "Waiting for server...";
+
+    }
+
+}
+
+updateLocation();
+
+setInterval(
+    updateLocation,
+    5000
+);
+
+</script>
+
+</body>
+</html>
